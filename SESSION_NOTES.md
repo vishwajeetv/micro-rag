@@ -1,8 +1,9 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
+**Last Updated:** 2025-11-24 (Session 2)
 **Project:** Europa Universalis 5 Wiki RAG System
-**Tech Stack:** Python + FastAPI + Pinecone + OpenAI + React (Vite) + TypeScript
+**Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
 ---
 
@@ -32,7 +33,7 @@
 
 **End Goal:** Build a production-ready RAG system that:
 1. Scrapes https://eu5.paradoxwikis.com/Europa_Universalis_5_Wiki
-2. Stores content as embeddings in Pinecone vector database
+2. Stores content as embeddings in PostgreSQL + pgvector (local, HNSW index)
 3. Enables RAG-based chat about EU5 game mechanics
 4. Has a React chat UI for user interaction
 5. Follows production best practices (testing, monitoring, security, Docker)
@@ -57,9 +58,10 @@
           │ Scrape & Process      │ Query & Generate
           ▼                       ▼
 ┌──────────────────┐    ┌─────────────────────────────────────┐
-│  EU5 Wiki Pages  │    │  PINECONE VECTOR DB                 │
-│  (HTML Content)  │    │  Index: eu5-wiki                    │
-└──────────────────┘    │  Embeddings + Metadata              │
+│  EU5 Wiki Pages  │    │  POSTGRESQL + PGVECTOR (Local)      │
+│  (HTML Content)  │    │  - Vector data type (embeddings)    │
+└──────────────────┘    │  - HNSW index (similarity search)   │
+                        │  - Document metadata                │
                         └──────────┬──────────────────────────┘
                                    │
                                    ▼
@@ -74,13 +76,13 @@
 
 ## 📋 Implementation Plan (20 Days)
 
-### **Phase 1: Project Foundation (Day 1)** ⬅️ CURRENT PHASE
+### **Phase 1: Project Foundation (Day 1)** ✅ COMPLETED
 1. ✅ Create project structure (backend + frontend directories)
-2. ⏳ Set up requirements.txt with detailed dependency explanations
-3. ⏳ Configure environment management (.env.example, config.py)
-4. ⏳ Initialize git repository with .gitignore
-5. ⏳ Create Docker setup (Dockerfile, docker-compose.yml)
-6. ⏳ Set up structured logging configuration
+2. ✅ Set up requirements.txt with detailed dependency explanations (PostgreSQL + pgvector)
+3. ✅ Configure environment management (.env.example, config.py with Pydantic Settings)
+4. ✅ Initialize git repository with .gitignore
+5. ✅ Create Docker setup (Dockerfile, docker-compose.yml with PostgreSQL + pgvector)
+6. ✅ Set up structured logging configuration (structlog with JSON/console modes)
 
 ### **Phase 2: Backend Core (Day 2)**
 - Build FastAPI app with layered architecture
@@ -99,12 +101,13 @@
 - Metadata extraction
 
 ### **Phase 5: Embeddings & Vector Store (Days 6-7)**
-- Pinecone setup (serverless index)
+- PostgreSQL + pgvector setup with SQLAlchemy models
 - OpenAI embeddings (text-embedding-3-small)
+- HNSW index creation and optimization
 - Batch upsert implementation
 
 ### **Phase 6: RAG Query Engine (Days 8-10)**
-- Semantic search with Pinecone
+- Semantic search with pgvector (cosine similarity)
 - Prompt engineering (system + context + query)
 - GPT-4 integration with streaming
 - Source citations
@@ -149,7 +152,8 @@
 - **FastAPI 0.104+** - Modern async web framework
 - **Python 3.11+** - Latest stable Python
 - **LangChain** - RAG orchestration framework
-- **Pinecone** - Serverless vector database
+- **PostgreSQL + pgvector** - Local vector database with HNSW index
+- **SQLAlchemy 2.0+** - Async ORM for database operations
 - **OpenAI API** - GPT-4 + embeddings
 - **BeautifulSoup4 + aiohttp** - Web scraping
 - **Structlog** - Structured logging
@@ -167,66 +171,70 @@
 
 ---
 
-## 📂 Project Structure (Created)
+## 📂 Project Structure (Session 2)
 
 ```
 micro-rag/
-├── .venv/                       # Python virtual environment (existing)
+├── .venv/                           # Python virtual environment (existing)
+├── .git/                            ✅ Git repository initialized
+├── .gitignore                       ✅ Created
+├── .env.example                     ✅ Created (HNSW config, PostgreSQL)
+├── .env                             ✅ Created (copy of .env.example)
+├── docker-compose.yml               ✅ Created (PostgreSQL + pgvector + backend)
+├── README.md                        ✅ Created (quick start guide)
+├── SESSION_NOTES.md                 ✅ Updated (this file)
+├── REQUIREMENTS_DRAFT.md            ✅ Created (Session 1)
 ├── backend/
 │   ├── app/
-│   │   ├── __init__.py         ✅ Created
-│   │   ├── main.py             ⏳ To create
+│   │   ├── __init__.py             ✅ Created
+│   │   ├── main.py                 ⏳ Next - Phase 2
 │   │   ├── api/
-│   │   │   ├── __init__.py     ✅ Created
-│   │   │   └── routes.py       ⏳ To create
+│   │   │   ├── __init__.py         ✅ Created
+│   │   │   └── routes.py           ⏳ To create
 │   │   ├── core/
-│   │   │   ├── __init__.py     ✅ Created
-│   │   │   ├── config.py       ⏳ To create
-│   │   │   └── logging.py      ⏳ To create
+│   │   │   ├── __init__.py         ✅ Created
+│   │   │   ├── config.py           ✅ Created (Pydantic Settings)
+│   │   │   └── logging.py          ✅ Created (Structlog)
 │   │   ├── models/
-│   │   │   ├── __init__.py     ✅ Created
-│   │   │   └── schemas.py      ⏳ To create
+│   │   │   ├── __init__.py         ✅ Created
+│   │   │   ├── database.py         ⏳ To create (SQLAlchemy models)
+│   │   │   └── schemas.py          ⏳ To create (Pydantic schemas)
 │   │   └── services/
-│   │       ├── __init__.py     ✅ Created
-│   │       ├── scraper.py      ⏳ To create
-│   │       ├── embeddings.py   ⏳ To create
-│   │       ├── vector_store.py ⏳ To create
-│   │       └── rag_engine.py   ⏳ To create
+│   │       ├── __init__.py         ✅ Created
+│   │       ├── scraper.py          ⏳ To create
+│   │       ├── embeddings.py       ⏳ To create
+│   │       ├── vector_store.py     ⏳ To create
+│   │       └── rag_engine.py       ⏳ To create
 │   ├── tests/
-│   │   └── __init__.py         ✅ Created
-│   ├── requirements.txt        ⏳ Next step (with detailed explanations)
-│   ├── Dockerfile              ⏳ To create
-│   └── .env.example            ⏳ To create
-├── frontend/
-│   ├── src/
-│   │   ├── components/         ✅ Created (empty)
-│   │   ├── pages/              ✅ Created (empty)
-│   │   └── utils/              ✅ Created (empty)
-│   ├── package.json            ⏳ To create (Vite + React + TS)
-│   └── Dockerfile              ⏳ To create
-├── .github/
-│   └── workflows/              ✅ Created (empty)
-├── docker-compose.yml          ⏳ To create
-├── .gitignore                  ⏳ To create
-├── README.md                   ⏳ To create
-└── SESSION_NOTES.md            ✅ This file!
+│   │   └── __init__.py             ✅ Created
+│   ├── scripts/
+│   │   └── init_pgvector.sql       ✅ Created (auto-enable pgvector)
+│   ├── requirements.txt            ✅ Created (PostgreSQL + pgvector)
+│   └── Dockerfile                  ✅ Created (dev-only, simple)
+└── frontend/
+    ├── src/
+    │   ├── components/             ✅ Created (empty)
+    │   ├── pages/                  ✅ Created (empty)
+    │   └── utils/                  ✅ Created (empty)
+    ├── package.json                ⏳ To create (Vite + React + TS)
+    └── Dockerfile                  ⏳ To create
 ```
 
 ---
 
-## 📝 Next Steps (When You Return)
+## 📝 Next Steps (Phase 2 - Backend Core)
 
-1. **Complete Phase 1:**
-   - Create `backend/requirements.txt` with detailed dependency explanations
-   - Create `.env.example` with all required environment variables
-   - Create `backend/app/core/config.py` for settings management
-   - Initialize git repository
-   - Create Docker files
+**Before you start:**
+- Add your `OPENAI_API_KEY` to `.env` file
 
-2. **Start Phase 2:**
-   - Build basic FastAPI application structure
-   - Set up logging
-   - Create health check endpoint
+**Phase 2 Tasks:**
+1. Create `backend/app/main.py` - FastAPI application with lifespan events
+2. Add CORS middleware for frontend integration
+3. Add request logging middleware
+4. Create database connection with SQLAlchemy async engine
+5. Create `backend/app/models/database.py` - SQLAlchemy base and database models
+6. Create health check endpoint (`GET /api/health`)
+7. Test Docker setup: `docker-compose up`
 
 ---
 
@@ -250,9 +258,9 @@ While the implementation will teach you most concepts, here are topics to resear
 9. LLM context window limitations?
 
 ### Vector Databases
-10. Why Pinecone instead of PostgreSQL with pgvector?
-11. Pinecone index types (pods vs serverless)?
-12. What metadata to store with vectors?
+10. PostgreSQL + pgvector vs dedicated vector DBs (Pinecone, Weaviate, Qdrant)?
+11. HNSW vs IVFFlat indexes - tradeoffs and when to use each?
+12. What metadata to store with vectors? Index optimization strategies?
 
 ### System Design
 13. On-demand vs batch scraping?
@@ -278,10 +286,26 @@ While the implementation will teach you most concepts, here are topics to resear
 ## 🚀 When You're Ready to Continue
 
 Just say: **"Let's continue from where we left off"** and I'll:
-1. Resume from Phase 1 (creating requirements.txt)
+1. Start Phase 2 (Backend Core - FastAPI application)
 2. Reference this session document
 3. Keep building step-by-step with explanations
+4. **Use Sonnet model** (as requested)
 
 ---
 
-**Session saved! You can restart your laptop safely. See you soon! 🎮**
+## ✅ Session 2 Complete! (2025-11-24)
+
+**What We Built Today:**
+- ✅ PostgreSQL + pgvector setup (replaced Pinecone)
+- ✅ HNSW index configuration (better than IVFFlat)
+- ✅ Complete requirements.txt with all dependencies
+- ✅ Pydantic Settings with env-first pattern
+- ✅ Docker Compose with simple dev setup
+- ✅ Structured logging (structlog)
+- ✅ Git repository initialized
+- ✅ Comprehensive .gitignore
+- ✅ README with quick start guide
+
+**Next Session:** Phase 2 - Backend Core (FastAPI app, database models, health check)
+
+**Session saved! You can restart your laptop safely. See you tomorrow! 🎮**
