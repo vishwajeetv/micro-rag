@@ -1,0 +1,128 @@
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # POSTGRESQL + PGVECTOR DATABASE
+  # ==========================================================================
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: microrag-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-microrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-microrag_password}
+      POSTGRES_DB: ${POSTGRES_DB:-microrag}
+      # Performance tuning for development
+      POSTGRES_SHARED_BUFFERS: 256MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      # Persist database data
+      - postgres_data:/var/lib/postgresql/data
+      # Initialization scripts (auto-run on first start)
+      - ./backend/scripts/init_pgvector.sql:/docker-entrypoint-initdb.d/01_init_pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-microrag}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - microrag-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # BACKEND (FastAPI)
+  # ==========================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development  # Use development stage for local dev
+    container_name: microrag-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      # Read from .env file
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-true}
+
+      # Database connection (use service name 'postgres' as host)
+      POSTGRES_USER: ${POSTGRES_USER:-microrag}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-microrag_password}
+      POSTGRES_DB: ${POSTGRES_DB:-microrag}
+      POSTGRES_HOST: postgres  # Docker service name
+      POSTGRES_PORT: 5432
+
+      # OpenAI
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+
+      # Other settings from .env
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # Mount source code for hot reload during development
+      - ./backend/app:/app/app:ro
+      - ./backend/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - microrag-network
+    restart: unless-stopped
+
+  # ==========================================================================
+  # FRONTEND (React + Vite) - Uncomment when ready
+  # ==========================================================================
+  # frontend:
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #     target: development
+  #   container_name: microrag-frontend
+  #   command: npm run dev -- --host
+  #   environment:
+  #     VITE_API_URL: http://localhost:8000/api
+  #   ports:
+  #     - "5173:5173"
+  #   volumes:
+  #     - ./frontend/src:/app/src:ro
+  #     - ./frontend/public:/app/public:ro
+  #   depends_on:
+  #     - backend
+  #   networks:
+  #     - microrag-network
+  #   restart: unless-stopped
+
+  # ==========================================================================
+  # PGADMIN (Optional - Database GUI)
+  # ==========================================================================
+  # Uncomment if you want a web UI for PostgreSQL
+  # pgadmin:
+  #   image: dpage/pgadmin4:latest
+  #   container_name: microrag-pgadmin
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@microrag.local
+  #     PGADMIN_DEFAULT_PASSWORD: admin
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - postgres
+  #   networks:
+  #     - microrag-network
+  #   restart: unless-stopped
+
+# ==========================================================================
+# VOLUMES
+# ==========================================================================
+volumes:
+  postgres_data:
+    driver: local
+    name: microrag-postgres-data
+
+# ==========================================================================
+# NETWORKS
+# ==========================================================================
+networks:
+  microrag-network:
+    driver: bridge
+    name: microrag-network
