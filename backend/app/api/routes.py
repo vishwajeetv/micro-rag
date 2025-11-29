@@ -3,6 +3,7 @@ API routes for the Micro-RAG application.
 
 This module defines all API endpoints:
 - Health check
+- Collection management
 - Scraping endpoints
 - Chat/RAG endpoints
 - Index statistics
@@ -10,30 +11,42 @@ This module defines all API endpoints:
 Routes are organized by feature and will be expanded in later phases.
 """
 
+import re
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models.database import get_db, Document, Chunk, ScrapeJob
+from app.models.database import get_db, Collection, Document, Chunk, ScrapeJob
 from app.models.schemas import (
     HealthResponse,
+    CollectionCreate,
+    CollectionResponse,
+    CollectionDetail,
     IndexStatsResponse,
     ScrapeRequest,
     ScrapeJobResponse,
     ScrapeStatusResponse,
     ChatRequest,
     ChatResponse,
-    ErrorResponse,
 )
 
 logger = get_logger(__name__)
 
 # Create main router
 router = APIRouter()
+
+
+def slugify(text: str) -> str:
+    """Convert text to URL-safe slug."""
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[-\s]+", "-", text)
+    return text
 
 
 # ============================================================================
@@ -55,7 +68,6 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     Returns application status and database connectivity.
     Used by Docker health checks and load balancers.
     """
-    # Check database connection
     try:
         await db.execute(text("SELECT 1"))
         db_status = "connected"
@@ -73,22 +85,9 @@ async def health_check(db: AsyncSession = Depends(get_db)) -> HealthResponse:
     )
 
 
-@router.get(
-    "/health/ready",
-    tags=["Health"],
-    summary="Readiness check",
-    description="Check if the service is ready to receive traffic",
-)
+@router.get("/health/ready", tags=["Health"], summary="Readiness check")
 async def readiness_check(db: AsyncSession = Depends(get_db)) -> dict:
-    """
-    Readiness probe for Kubernetes/Docker.
-
-    Different from health check:
-    - Health: Is the app running?
-    - Ready: Is the app ready to serve requests?
-
-    We check database connectivity here.
-    """
+    """Readiness probe for Kubernetes/Docker."""
     try:
         await db.execute(text("SELECT 1"))
         return {"ready": True}
@@ -100,20 +99,192 @@ async def readiness_check(db: AsyncSession = Depends(get_db)) -> dict:
         )
 
 
-@router.get(
-    "/health/live",
-    tags=["Health"],
-    summary="Liveness check",
-    description="Check if the service is alive",
-)
+@router.get("/health/live", tags=["Health"], summary="Liveness check")
 async def liveness_check() -> dict:
-    """
-    Liveness probe for Kubernetes/Docker.
-
-    Simple check - if we can respond, we're alive.
-    No external dependency checks here.
-    """
+    """Liveness probe for Kubernetes/Docker."""
     return {"alive": True}
+
+
+# ============================================================================
+# COLLECTION ENDPOINTS
+# ============================================================================
+
+
+@router.post(
+    "/collections",
+    response_model=CollectionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Collections"],
+    summary="Create a collection",
+    description="Create a new document collection for a website",
+)
+async def create_collection(
+    request: CollectionCreate,
+    db: AsyncSession = Depends(get_db),
+) -> CollectionResponse:
+    """
+    Create a new collection.
+
+    Collections group documents from a single source (e.g., a wiki site).
+    Each collection has its own scraping configuration.
+    """
+    # Generate slug if not provided
+    slug = request.slug or slugify(request.name)
+
+    # Check if slug already exists
+    existing = await db.execute(
+        select(Collection).where(Collection.slug == slug)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Collection with slug '{slug}' already exists",
+        )
+
+    # Create collection
+    collection = Collection(
+        name=request.name,
+        slug=slug,
+        description=request.description,
+        base_url=request.base_url,
+        start_url=request.start_url,
+        scraper_max_pages=request.scraper_max_pages,
+    )
+    db.add(collection)
+    await db.commit()
+    await db.refresh(collection)
+
+    logger.info("collection_created", collection_id=collection.id, slug=slug)
+
+    return CollectionResponse(
+        id=collection.id,
+        name=collection.name,
+        slug=collection.slug,
+        description=collection.description,
+        base_url=collection.base_url,
+        start_url=collection.start_url,
+        is_active=collection.is_active,
+        document_count=0,
+        last_scraped_at=collection.last_scraped_at,
+        created_at=collection.created_at,
+    )
+
+
+@router.get(
+    "/collections",
+    response_model=list[CollectionResponse],
+    tags=["Collections"],
+    summary="List all collections",
+)
+async def list_collections(
+    db: AsyncSession = Depends(get_db),
+) -> list[CollectionResponse]:
+    """List all document collections."""
+    result = await db.execute(
+        select(Collection).order_by(Collection.created_at.desc())
+    )
+    collections = result.scalars().all()
+
+    responses = []
+    for c in collections:
+        # Count documents
+        doc_count = await db.execute(
+            select(func.count()).select_from(Document).where(Document.collection_id == c.id)
+        )
+        responses.append(
+            CollectionResponse(
+                id=c.id,
+                name=c.name,
+                slug=c.slug,
+                description=c.description,
+                base_url=c.base_url,
+                start_url=c.start_url,
+                is_active=c.is_active,
+                document_count=doc_count.scalar() or 0,
+                last_scraped_at=c.last_scraped_at,
+                created_at=c.created_at,
+            )
+        )
+
+    return responses
+
+
+@router.get(
+    "/collections/{slug}",
+    response_model=CollectionDetail,
+    tags=["Collections"],
+    summary="Get collection details",
+)
+async def get_collection(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+) -> CollectionDetail:
+    """Get detailed information about a collection."""
+    result = await db.execute(
+        select(Collection).where(Collection.slug == slug)
+    )
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection '{slug}' not found",
+        )
+
+    # Count documents and chunks
+    doc_count = await db.execute(
+        select(func.count()).select_from(Document).where(Document.collection_id == collection.id)
+    )
+    chunk_count = await db.execute(
+        select(func.count())
+        .select_from(Chunk)
+        .join(Document)
+        .where(Document.collection_id == collection.id)
+    )
+
+    return CollectionDetail(
+        id=collection.id,
+        name=collection.name,
+        slug=collection.slug,
+        description=collection.description,
+        base_url=collection.base_url,
+        start_url=collection.start_url,
+        is_active=collection.is_active,
+        scraper_max_pages=collection.scraper_max_pages,
+        scraper_delay_seconds=collection.scraper_delay_seconds,
+        document_count=doc_count.scalar() or 0,
+        chunk_count=chunk_count.scalar() or 0,
+        last_scraped_at=collection.last_scraped_at,
+        created_at=collection.created_at,
+    )
+
+
+@router.delete(
+    "/collections/{slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Collections"],
+    summary="Delete a collection",
+)
+async def delete_collection(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a collection and all its documents/chunks."""
+    result = await db.execute(
+        select(Collection).where(Collection.slug == slug)
+    )
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection '{slug}' not found",
+        )
+
+    await db.delete(collection)
+    await db.commit()
+
+    logger.info("collection_deleted", slug=slug)
 
 
 # ============================================================================
@@ -126,33 +297,21 @@ async def liveness_check() -> dict:
     response_model=IndexStatsResponse,
     tags=["Index"],
     summary="Get index statistics",
-    description="Get statistics about the vector index and stored documents",
 )
 async def get_index_stats(db: AsyncSession = Depends(get_db)) -> IndexStatsResponse:
-    """
-    Get statistics about the document index.
-
-    Returns counts of documents, chunks, and embeddings.
-    Useful for monitoring and debugging.
-    """
-    # Count documents
+    """Get statistics about the document index."""
     doc_result = await db.execute(select(func.count()).select_from(Document))
     total_documents = doc_result.scalar() or 0
 
-    # Count chunks
     chunk_result = await db.execute(select(func.count()).select_from(Chunk))
     total_chunks = chunk_result.scalar() or 0
 
-    # Count chunks with embeddings (not null)
     embedded_result = await db.execute(
         select(func.count()).select_from(Chunk).where(Chunk.embedding.isnot(None))
     )
     total_embeddings = embedded_result.scalar() or 0
 
-    # Calculate pending
     pending_embeddings = total_chunks - total_embeddings
-
-    # Estimate storage (rough estimate: 1536 floats * 4 bytes * num_embeddings)
     storage_bytes = total_embeddings * settings.openai_embedding_dimension * 4
     storage_mb = storage_bytes / (1024 * 1024)
 
@@ -173,65 +332,87 @@ async def get_index_stats(db: AsyncSession = Depends(get_db)) -> IndexStatsRespo
 
 
 # ============================================================================
-# SCRAPING ENDPOINTS (Stubs - to be implemented in Phase 3)
+# SCRAPING ENDPOINTS
 # ============================================================================
 
 
 @router.post(
-    "/scrape",
+    "/collections/{slug}/scrape",
     response_model=ScrapeJobResponse,
     status_code=status.HTTP_202_ACCEPTED,
     tags=["Scraping"],
-    summary="Start scraping job",
-    description="Start a background job to scrape EU5 Wiki pages",
-    responses={
-        202: {"description": "Scraping job started"},
-        409: {"description": "Scraping job already running"},
-    },
+    summary="Start scraping job for a collection",
 )
 async def start_scrape(
+    slug: str,
     request: ScrapeRequest,
     db: AsyncSession = Depends(get_db),
 ) -> ScrapeJobResponse:
     """
-    Start a new scraping job.
+    Start a new scraping job for a collection.
 
     This endpoint:
     1. Creates a new ScrapeJob in the database
     2. Starts a background task to scrape pages
     3. Returns immediately with a job ID for tracking
-
-    To be implemented in Phase 3.
     """
-    # Check for running jobs
+    # Get collection
+    result = await db.execute(
+        select(Collection).where(Collection.slug == slug)
+    )
+    collection = result.scalar_one_or_none()
+
+    if not collection:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Collection '{slug}' not found",
+        )
+
+    # Check for running jobs for this collection
     running_result = await db.execute(
-        select(ScrapeJob).where(ScrapeJob.status.in_(["pending", "running"]))
+        select(ScrapeJob).where(
+            ScrapeJob.collection_id == collection.id,
+            ScrapeJob.status.in_(["pending", "running"]),
+        )
     )
     running_job = running_result.scalar_one_or_none()
 
     if running_job:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Scraping job {running_job.id} is already {running_job.status}",
+            detail=f"Scraping job {running_job.id} is already {running_job.status} for this collection",
         )
+
+    # Determine max pages
+    max_pages = (
+        request.max_pages
+        or collection.scraper_max_pages
+        or settings.scraper_max_pages
+    )
 
     # Create new job
     job = ScrapeJob(
+        collection_id=collection.id,
         status="pending",
-        total_pages=request.max_pages or settings.scraper_max_pages,
+        total_pages=max_pages,
     )
     db.add(job)
     await db.commit()
     await db.refresh(job)
 
-    logger.info("scrape_job_created", job_id=job.id, max_pages=job.total_pages)
+    logger.info(
+        "scrape_job_created",
+        job_id=job.id,
+        collection_slug=slug,
+        max_pages=max_pages,
+    )
 
     # TODO: Phase 3 - Start background scraping task
 
     return ScrapeJobResponse(
         job_id=job.id,
         status=job.status,
-        message=f"Scraping job {job.id} created. Implementation coming in Phase 3.",
+        message=f"Scraping job {job.id} created for collection '{slug}'.",
     )
 
 
@@ -240,22 +421,17 @@ async def start_scrape(
     response_model=ScrapeStatusResponse,
     tags=["Scraping"],
     summary="Get scraping job status",
-    description="Get the current status of a scraping job",
-    responses={
-        200: {"description": "Job status"},
-        404: {"description": "Job not found"},
-    },
 )
 async def get_scrape_status(
     job_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> ScrapeStatusResponse:
-    """
-    Get the status of a scraping job.
-
-    Use this to poll for progress updates.
-    """
-    result = await db.execute(select(ScrapeJob).where(ScrapeJob.id == job_id))
+    """Get the status of a scraping job."""
+    result = await db.execute(
+        select(ScrapeJob)
+        .options(selectinload(ScrapeJob.collection))
+        .where(ScrapeJob.id == job_id)
+    )
     job = result.scalar_one_or_none()
 
     if not job:
@@ -264,13 +440,14 @@ async def get_scrape_status(
             detail=f"Scrape job {job_id} not found",
         )
 
-    # Calculate progress
     progress = 0.0
     if job.total_pages > 0:
         progress = (job.pages_scraped / job.total_pages) * 100
 
     return ScrapeStatusResponse(
         job_id=job.id,
+        collection_id=job.collection_id,
+        collection_slug=job.collection.slug if job.collection else None,
         status=job.status,
         total_pages=job.total_pages,
         pages_scraped=job.pages_scraped,
@@ -285,7 +462,7 @@ async def get_scrape_status(
 
 
 # ============================================================================
-# CHAT/RAG ENDPOINTS (Stubs - to be implemented in Phase 6)
+# CHAT/RAG ENDPOINTS
 # ============================================================================
 
 
@@ -294,11 +471,7 @@ async def get_scrape_status(
     response_model=ChatResponse,
     tags=["Chat"],
     summary="Ask a question",
-    description="Ask a question about EU5 and get an AI-generated answer with sources",
-    responses={
-        200: {"description": "Generated answer"},
-        503: {"description": "No documents indexed yet"},
-    },
+    description="Ask a question and get an AI-generated answer with sources",
 )
 async def chat(
     request: ChatRequest,
@@ -309,21 +482,36 @@ async def chat(
 
     This endpoint:
     1. Embeds the user's question
-    2. Searches for relevant chunks
+    2. Searches for relevant chunks (optionally filtered by collection)
     3. Generates an answer using GPT-4
     4. Returns answer with source citations
 
     To be implemented in Phase 6.
     """
+    # If collection specified, verify it exists
+    if request.collection_slug:
+        result = await db.execute(
+            select(Collection).where(Collection.slug == request.collection_slug)
+        )
+        if not result.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection '{request.collection_slug}' not found",
+            )
+
     # Check if we have any chunks
     chunk_count = await db.execute(select(func.count()).select_from(Chunk))
     if (chunk_count.scalar() or 0) == 0:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="No documents indexed yet. Please run a scrape job first.",
+            detail="No documents indexed yet. Please create a collection and run a scrape job first.",
         )
 
-    logger.info("chat_request", question=request.question[:100])
+    logger.info(
+        "chat_request",
+        question=request.question[:100],
+        collection=request.collection_slug,
+    )
 
     # TODO: Phase 6 - Implement RAG pipeline
 
@@ -341,22 +529,13 @@ async def chat(
 # ============================================================================
 
 
-@router.get(
-    "/",
-    tags=["Info"],
-    summary="API information",
-    description="Get basic API information and available endpoints",
-)
+@router.get("/", tags=["Info"], summary="API information")
 async def api_info() -> dict:
-    """
-    Root endpoint with API information.
-
-    Useful for verifying the API is running.
-    """
+    """Root endpoint with API information."""
     return {
         "name": settings.app_name,
         "version": "0.1.0",
-        "description": "RAG system for Europa Universalis 5 Wiki",
+        "description": "Multi-collection RAG system",
         "docs_url": f"{settings.api_v1_prefix}/docs",
         "health_url": f"{settings.api_v1_prefix}/health",
     }

@@ -167,6 +167,62 @@ class Base(DeclarativeBase):
 
 
 # ============================================================================
+# COLLECTION MODEL (for multi-site support)
+# ============================================================================
+
+
+class Collection(Base):
+    """
+    Represents a collection of documents from a single source/site.
+
+    Examples:
+    - "eu5-wiki" for Europa Universalis 5 Wiki
+    - "stellaris-wiki" for Stellaris Wiki
+    - "company-docs" for internal documentation
+
+    Why use collections?
+    - Supports multiple RAG sources in one system
+    - Each collection can have its own scraping config
+    - Chat queries can be scoped to specific collections
+    - Makes future multi-tenancy easier (collections belong to tenants)
+    """
+
+    __tablename__ = "collections"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+
+    # Collection identity
+    name = Column(String(100), unique=True, nullable=False, index=True)
+    slug = Column(String(100), unique=True, nullable=False, index=True)  # URL-safe identifier
+    description = Column(Text, nullable=True)
+
+    # Source configuration
+    base_url = Column(String(2048), nullable=False)  # e.g., "https://eu5.paradoxwikis.com"
+    start_url = Column(String(2048), nullable=False)  # e.g., ".../Europa_Universalis_5_Wiki"
+
+    # Scraping settings (can override global defaults)
+    scraper_max_pages = Column(Integer, nullable=True)  # NULL = use default
+    scraper_delay_seconds = Column(Integer, nullable=True)
+
+    # Status
+    is_active = Column(Integer, nullable=False, default=1)  # 1 = active, 0 = disabled
+    last_scraped_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    documents = relationship("Document", back_populates="collection", cascade="all, delete-orphan")
+    scrape_jobs = relationship("ScrapeJob", back_populates="collection", cascade="all, delete-orphan")
+
+    def __repr__(self) -> str:
+        return f"<Collection(id={self.id}, slug='{self.slug}')>"
+
+
+# ============================================================================
 # DOCUMENT MODEL
 # ============================================================================
 
@@ -188,8 +244,16 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
+    # Parent collection reference
+    collection_id = Column(
+        Integer,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     # Source information
-    url = Column(String(2048), unique=True, nullable=False, index=True)
+    url = Column(String(2048), nullable=False, index=True)
     title = Column(String(500), nullable=False)
 
     # Content
@@ -208,7 +272,13 @@ class Document(Base):
     )
 
     # Relationships
+    collection = relationship("Collection", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
+
+    # Unique constraint: same URL can exist in different collections
+    __table_args__ = (
+        Index("ix_documents_collection_url", "collection_id", "url", unique=True),
+    )
 
     def __repr__(self) -> str:
         return f"<Document(id={self.id}, title='{self.title[:50]}...')>"
@@ -337,6 +407,14 @@ class ScrapeJob(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
 
+    # Parent collection reference
+    collection_id = Column(
+        Integer,
+        ForeignKey("collections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
     # Status tracking
     status = Column(
         String(20),
@@ -362,5 +440,8 @@ class ScrapeJob(Base):
         DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
     )
 
+    # Relationships
+    collection = relationship("Collection", back_populates="scrape_jobs")
+
     def __repr__(self) -> str:
-        return f"<ScrapeJob(id={self.id}, status='{self.status}', progress={self.pages_scraped}/{self.total_pages})>"
+        return f"<ScrapeJob(id={self.id}, collection_id={self.collection_id}, status='{self.status}', progress={self.pages_scraped}/{self.total_pages})>"

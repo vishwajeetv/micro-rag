@@ -46,6 +46,79 @@ class DatabaseStats(BaseModel):
 
 
 # ============================================================================
+# COLLECTION SCHEMAS
+# ============================================================================
+
+
+class CollectionBase(BaseModel):
+    """Base fields for Collection."""
+
+    name: str = Field(
+        min_length=2,
+        max_length=100,
+        description="Display name for the collection",
+        examples=["Europa Universalis 5 Wiki", "Stellaris Wiki"],
+    )
+    description: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Description of what this collection contains",
+    )
+    base_url: str = Field(
+        description="Base URL of the website",
+        examples=["https://eu5.paradoxwikis.com"],
+    )
+    start_url: str = Field(
+        description="Starting URL for scraping",
+        examples=["https://eu5.paradoxwikis.com/Europa_Universalis_5_Wiki"],
+    )
+
+
+class CollectionCreate(CollectionBase):
+    """Request to create a new collection."""
+
+    slug: str | None = Field(
+        default=None,
+        min_length=2,
+        max_length=100,
+        pattern=r"^[a-z0-9-]+$",
+        description="URL-safe identifier (auto-generated from name if not provided)",
+        examples=["eu5-wiki", "stellaris-wiki"],
+    )
+    scraper_max_pages: int | None = Field(
+        default=None,
+        ge=1,
+        le=10000,
+        description="Max pages to scrape (default: from config)",
+    )
+
+
+class CollectionResponse(BaseModel):
+    """Collection data returned from API."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    slug: str
+    description: str | None
+    base_url: str
+    start_url: str
+    is_active: int
+    document_count: int = Field(default=0, description="Number of documents in collection")
+    last_scraped_at: datetime | None
+    created_at: datetime
+
+
+class CollectionDetail(CollectionResponse):
+    """Detailed collection information."""
+
+    scraper_max_pages: int | None
+    scraper_delay_seconds: int | None
+    chunk_count: int = Field(default=0, description="Total chunks in collection")
+
+
+# ============================================================================
 # DOCUMENT SCHEMAS
 # ============================================================================
 
@@ -63,6 +136,7 @@ class DocumentResponse(DocumentBase):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    collection_id: int
     word_count: int
     chunk_count: int = Field(default=0, description="Number of chunks from this document")
     scraped_at: datetime
@@ -145,6 +219,8 @@ class ScrapeStatusResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     job_id: int
+    collection_id: int
+    collection_slug: str | None = Field(default=None)
     status: str = Field(description="pending, running, completed, or failed")
     total_pages: int
     pages_scraped: int
@@ -168,8 +244,13 @@ class ChatRequest(BaseModel):
     question: str = Field(
         min_length=3,
         max_length=2000,
-        description="Question to ask about EU5",
+        description="Question to ask",
         examples=["How do I form Spain in EU5?", "What are the best trade nodes?"],
+    )
+    collection_slug: str | None = Field(
+        default=None,
+        description="Collection to search in (default: search all collections)",
+        examples=["eu5-wiki"],
     )
     top_k: int | None = Field(
         default=None,

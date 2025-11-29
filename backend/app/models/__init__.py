@@ -2,13 +2,14 @@
 Database models and Pydantic schemas.
 
 This package exports:
-- SQLAlchemy models (Document, Chunk, ScrapeJob)
+- SQLAlchemy models (Collection, Document, Chunk, ScrapeJob)
 - Pydantic schemas for API validation
 - Database utilities (get_db, init_db, close_db)
 """
 
 from app.models.database import (
     Base,
+    Collection,
     Document,
     Chunk,
     ScrapeJob,
@@ -19,6 +20,9 @@ from app.models.database import (
 
 from app.models.schemas import (
     HealthResponse,
+    CollectionCreate,
+    CollectionResponse,
+    CollectionDetail,
     DocumentResponse,
     ChunkResponse,
     ChunkWithScore,
@@ -34,6 +38,7 @@ from app.models.schemas import (
 __all__ = [
     # Database
     "Base",
+    "Collection",
     "Document",
     "Chunk",
     "ScrapeJob",
@@ -42,6 +47,9 @@ __all__ = [
     "close_db",
     # Schemas
     "HealthResponse",
+    "CollectionCreate",
+    "CollectionResponse",
+    "CollectionDetail",
     "DocumentResponse",
     "ChunkResponse",
     "ChunkWithScore",
