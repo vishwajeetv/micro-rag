@@ -1,7 +1,7 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
-**Last Updated:** 2025-11-29 (Session 3)
+**Last Updated:** 2025-11-30 (Session 3 continued)
 **Project:** Europa Universalis 5 Wiki RAG System
 **Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
@@ -171,53 +171,48 @@
 
 ---
 
-## 📂 Project Structure (Session 3)
+## 📂 Project Structure (Updated - Session 3)
 
 ```
 micro-rag/
-├── .venv/                           # Python virtual environment (existing)
-├── .git/                            ✅ Git repository initialized
+├── .git/                            ✅ Git repository
 ├── .gitignore                       ✅ Created
-├── .env.example                     ✅ Created (HNSW config, PostgreSQL)
-├── .env                             ✅ Created (copy of .env.example)
-├── docker-compose.yml               ✅ Created (PostgreSQL + pgvector + backend)
-├── README.md                        ✅ Created (quick start guide)
-├── SESSION_NOTES.md                 ✅ Updated (this file)
-├── REQUIREMENTS_DRAFT.md            ✅ Created (Session 1)
-├── backend/
+├── README.md                        ✅ Quick start guide
+├── SESSION_NOTES.md                 ✅ This file
+├── REQUIREMENTS_DRAFT.md            ✅ Initial requirements
+├── backend/                         # All backend code lives here
+│   ├── .venv/                       ✅ Python 3.11 virtual environment
+│   ├── .env                         ✅ Environment config (API keys, DB)
+│   ├── .env.example                 ✅ Template for .env
+│   ├── docker-compose.yml           ✅ PostgreSQL + pgvector
+│   ├── Dockerfile                   ✅ Backend container
+│   ├── requirements.txt             ✅ Python dependencies
 │   ├── app/
-│   │   ├── __init__.py             ✅ Created
-│   │   ├── main.py                 ✅ Created (FastAPI + lifespan + middleware)
+│   │   ├── __init__.py
+│   │   ├── main.py                 ✅ FastAPI app + middleware
 │   │   ├── api/
-│   │   │   ├── __init__.py         ✅ Created
-│   │   │   └── routes.py           ✅ Created (8 endpoints)
+│   │   │   ├── __init__.py
+│   │   │   └── routes.py           ✅ 8 API endpoints
 │   │   ├── core/
-│   │   │   ├── __init__.py         ✅ Created
-│   │   │   ├── config.py           ✅ Created (Pydantic Settings)
-│   │   │   └── logging.py          ✅ Created (Structlog)
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py           ✅ Pydantic Settings
+│   │   │   └── logging.py          ✅ Structlog (fixed)
 │   │   ├── models/
-│   │   │   ├── __init__.py         ✅ Updated (exports)
-│   │   │   ├── database.py         ✅ Created (SQLAlchemy + pgvector)
-│   │   │   └── schemas.py          ✅ Created (Pydantic schemas)
+│   │   │   ├── __init__.py         ✅ Exports
+│   │   │   ├── database.py         ✅ SQLAlchemy + pgvector
+│   │   │   └── schemas.py          ✅ Pydantic schemas
 │   │   └── services/
-│   │       ├── __init__.py         ✅ Created
-│   │       ├── scraper.py          ⏳ Phase 3
+│   │       ├── __init__.py
+│   │       ├── scraper.py          ⏳ Phase 3 (NEXT)
 │   │       ├── embeddings.py       ⏳ Phase 5
 │   │       ├── vector_store.py     ⏳ Phase 5
 │   │       └── rag_engine.py       ⏳ Phase 6
-│   ├── tests/
-│   │   └── __init__.py             ✅ Created
 │   ├── scripts/
-│   │   └── init_pgvector.sql       ✅ Created (auto-enable pgvector)
-│   ├── requirements.txt            ✅ Created (PostgreSQL + pgvector)
-│   └── Dockerfile                  ✅ Created (dev-only, simple)
-└── frontend/
-    ├── src/
-    │   ├── components/             ✅ Created (empty)
-    │   ├── pages/                  ✅ Created (empty)
-    │   └── utils/                  ✅ Created (empty)
-    ├── package.json                ⏳ Phase 8
-    └── Dockerfile                  ⏳ Phase 8
+│   │   └── init_pgvector.sql       ✅ Auto-enable pgvector
+│   └── tests/
+│       └── __init__.py
+└── frontend/                        ⏳ Phase 8
+    └── src/
 ```
 
 ---
@@ -309,9 +304,9 @@ Just say: **"Let's continue from where we left off"** and I'll:
 
 ---
 
-## ✅ Session 3 Complete! (2025-11-29)
+## ✅ Session 3 Complete! (2025-11-29 to 2025-11-30)
 
-**What We Built Today:**
+**What We Built:**
 - ✅ `main.py` - FastAPI application with lifespan events
 - ✅ CORS middleware for frontend integration
 - ✅ Request logging middleware with request IDs
@@ -321,6 +316,7 @@ Just say: **"Let's continue from where we left off"** and I'll:
   - Chunk model (stores text chunks with embeddings)
   - ScrapeJob model (tracks scraping progress)
   - HNSW index configuration
+  - Graceful DB connection handling (app starts without DB)
 - ✅ `schemas.py` - Pydantic schemas for all endpoints
 - ✅ `routes.py` - 8 API endpoints:
   - `GET /api/` - API info
@@ -331,11 +327,79 @@ Just say: **"Let's continue from where we left off"** and I'll:
   - `POST /api/scrape` - Start scraping (stub)
   - `GET /api/scrape/{job_id}` - Get scrape status
   - `POST /api/chat` - RAG chat (stub)
-- ✅ All imports validated and working
-- ✅ Dependencies installed in venv
 
-**API Docs:** Once running, visit http://localhost:8000/api/docs
+**Fixes Applied (2025-11-30):**
+- ✅ Fixed structlog configuration (removed stdlib-specific processors)
+- ✅ Made database connection graceful (app starts even without PostgreSQL)
+- ✅ Removed strict `sk-` API key validation (supports Azure OpenAI)
+- ✅ Restructured project: moved `.env`, `.venv`, `docker-compose.yml` to `backend/`
+- ✅ Recreated venv with Python 3.11 (3.13 had wheel issues)
 
-**Next Session:** Phase 3 - Web Scraping (scraper service, background tasks)
+**To Run:**
+```bash
+cd backend
+source .venv/bin/activate
+uvicorn app.main:app --reload
+# Visit http://localhost:8000/api/docs
+```
 
-**Session saved! You can restart your laptop safely.**
+**Next:** Phase 3 - Web Scraping
+
+---
+
+## ✅ Session 4 Progress (2025-11-30)
+
+**What We Built:**
+
+### Collection Support (Multi-Site RAG)
+- ✅ Added `Collection` model to `database.py`
+- ✅ Updated `Document` and `ScrapeJob` to reference collections
+- ✅ Added Collection CRUD endpoints to `routes.py`:
+  - `POST /api/collections` - Create collection
+  - `GET /api/collections` - List collections
+  - `GET /api/collections/{slug}` - Get collection detail
+  - `DELETE /api/collections/{slug}` - Delete collection
+  - `POST /api/collections/{slug}/scrape` - Start scraping for collection
+- ✅ `ChatRequest` now supports `collection_slug` for filtering
+
+### Phase 3 - Web Scraping (COMPLETED)
+- ✅ `backend/app/services/scraper.py` - Full async wiki scraper
+  - `WikiScraper` class with async context manager
+  - `aiohttp` for async HTTP requests
+  - `BeautifulSoup` for HTML parsing
+  - `tenacity` for retry with exponential backoff (3 attempts)
+  - Rate limiting with configurable delay
+  - Concurrent request limiting (semaphore)
+  - Link extraction for breadth-first crawling
+  - Content cleaning (removes navboxes, edit links, cookie banners)
+  - Tested on EU5 Wiki - successfully scraped pages
+
+**Key Classes:**
+```python
+# Data classes
+ScrapedPage(url, title, content, content_hash, word_count, links)
+ScrapeError(url, error, status_code)
+
+# Main scraper
+async with WikiScraper(base_url="https://eu5.paradoxwikis.com") as scraper:
+    async for result in scraper.crawl(start_url="...", max_pages=100):
+        # Process each page
+```
+
+**Test Results:**
+- Main wiki page: 498 words, 50 links found
+- Europa Universalis V page: 3,424 words
+- Patch 1.0.X page: 16,814 words
+- Content extraction working well (headers marked with ##)
+
+**Database Schema with Collections:**
+```
+collections (parent)
+    └── documents (scraped pages, FK to collection)
+            └── chunks (text chunks with embeddings, FK to document)
+    └── scrape_jobs (background job tracking, FK to collection)
+```
+
+**Next Steps:**
+- Phase 4: Chunking & Text Processing
+- Phase 5: Embeddings & Vector Store (integrate scraper with DB)

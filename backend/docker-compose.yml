@@ -15,12 +15,12 @@ services:
       POSTGRES_SHARED_BUFFERS: 256MB
       POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       # Persist database data
       - postgres_data:/var/lib/postgresql/data
       # Initialization scripts (auto-run on first start)
-      - ./backend/scripts/init_pgvector.sql:/docker-entrypoint-initdb.d/01_init_pgvector.sql:ro
+      - ./scripts/init_pgvector.sql:/docker-entrypoint-initdb.d/01_init_pgvector.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-microrag}"]
       interval: 10s
