@@ -5,7 +5,7 @@
 # FastAPI - Modern, high-performance web framework for building APIs
 # Why: Provides async support, automatic API documentation (Swagger/OpenAPI),
 # data validation via Pydantic, and excellent developer experience
-fastapi==0.104.1
+fastapi==0.122.0
 
 # Uvicorn - Lightning-fast ASGI server implementation
 # Why: Needed to run FastAPI applications. The [standard] extra includes
@@ -30,7 +30,7 @@ pydantic==2.5.0
 # Pydantic Settings - Settings management for Pydantic
 # Why: Manages environment variables and configuration in a type-safe way.
 # Reads from .env files and validates all config values (API keys, URLs, etc.)
-pydantic-settings==2.1.0
+pydantic-settings==2.12.0
 
 
 # ============================================================================
@@ -41,17 +41,17 @@ pydantic-settings==2.1.0
 # Why: Provides abstractions for RAG pipelines, text splitting (chunking),
 # prompt templates, and chains that connect multiple steps together.
 # Saves you from writing boilerplate code
-langchain==0.1.0
+langchain==1.1.0
 
 # LangChain OpenAI - OpenAI integrations for LangChain
 # Why: Provides ready-to-use wrappers for OpenAI's embeddings and chat models.
 # Handles API calls, retries, and error handling for you
-langchain-openai==0.0.2
+langchain-openai==1.1.0
 
 # LangChain Community - Community-contributed integrations
 # Why: Contains additional integrations and utilities, including document
 # loaders and text splitters we'll use for chunking
-langchain-community==0.0.10
+langchain-community==0.4.1
 
 
 # ============================================================================
@@ -61,7 +61,7 @@ langchain-community==0.0.10
 # AsyncPG - Fast async PostgreSQL driver
 # Why: Fastest PostgreSQL driver for Python. Async operations work perfectly
 # with FastAPI. Handles connection pooling and prepared statements automatically
-asyncpg==0.29.0
+asyncpg==0.31.0
 
 # SQLAlchemy - SQL toolkit and ORM
 # Why: Provides high-level database abstractions. Makes it easy to define models,
@@ -71,7 +71,7 @@ sqlalchemy[asyncio]==2.0.23
 # Pgvector - PostgreSQL extension for vector similarity search
 # Why: Adds vector data type and similarity search to PostgreSQL. Supports
 # cosine distance, L2 distance, and inner product. Open source alternative to Pinecone
-pgvector==0.2.4
+pgvector==0.4.1
 
 # Alembic - Database migration tool
 # Why: Manages database schema changes over time. Creates migration scripts
@@ -102,13 +102,13 @@ openai==1.6.1
 # Why: Parses the HTML from Europa Universalis 5 Wiki pages. Extracts text
 # content while ignoring navigation, ads, and other irrelevant elements.
 # Easy to use for simple scraping tasks
-beautifulsoup4==4.12.2
+beautifulsoup4==4.14.2
 
 # aiohttp - Async HTTP client/server
 # Why: Makes HTTP requests to download wiki pages. Async version means we can
 # scrape multiple pages concurrently (faster than requests library).
 # Works well with FastAPI's async nature
-aiohttp==3.9.1
+aiohttp==3.13.2
 
 # lxml - Fast XML/HTML parser
 # Why: BeautifulSoup can use different parsers. lxml is the fastest and most
