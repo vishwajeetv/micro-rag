@@ -1,7 +1,7 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
-**Last Updated:** 2025-11-30 (Session 3 continued)
+**Last Updated:** 2025-11-30 (Session 4 - Chunker complete)
 **Project:** Europa Universalis 5 Wiki RAG System
 **Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
@@ -171,7 +171,7 @@
 
 ---
 
-## 📂 Project Structure (Updated - Session 3)
+## 📂 Project Structure (Updated - Session 4)
 
 ```
 micro-rag/
@@ -192,25 +192,27 @@ micro-rag/
 │   │   ├── main.py                 ✅ FastAPI app + middleware
 │   │   ├── api/
 │   │   │   ├── __init__.py
-│   │   │   └── routes.py           ✅ 8 API endpoints
+│   │   │   └── routes.py           ✅ Collection + API endpoints
 │   │   ├── core/
 │   │   │   ├── __init__.py
 │   │   │   ├── config.py           ✅ Pydantic Settings
 │   │   │   └── logging.py          ✅ Structlog (fixed)
 │   │   ├── models/
 │   │   │   ├── __init__.py         ✅ Exports
-│   │   │   ├── database.py         ✅ SQLAlchemy + pgvector
+│   │   │   ├── database.py         ✅ SQLAlchemy + pgvector + Collections
 │   │   │   └── schemas.py          ✅ Pydantic schemas
 │   │   └── services/
 │   │       ├── __init__.py
-│   │       ├── scraper.py          ⏳ Phase 3 (NEXT)
+│   │       ├── scraper.py          ✅ Async wiki scraper (Phase 3)
+│   │       ├── chunker.py          ✅ Token-based chunker (Phase 4)
 │   │       ├── embeddings.py       ⏳ Phase 5
 │   │       ├── vector_store.py     ⏳ Phase 5
 │   │       └── rag_engine.py       ⏳ Phase 6
 │   ├── scripts/
 │   │   └── init_pgvector.sql       ✅ Auto-enable pgvector
 │   └── tests/
-│       └── __init__.py
+│       ├── __init__.py
+│       └── test_chunker.py         ✅ 5 tests (TDD)
 └── frontend/                        ⏳ Phase 8
     └── src/
 ```
@@ -400,6 +402,41 @@ collections (parent)
     └── scrape_jobs (background job tracking, FK to collection)
 ```
 
+### Phase 4 - Chunking & Text Processing (COMPLETED)
+- ✅ `backend/app/services/chunker.py` - Token-based text chunker
+  - `TextChunker` class with tiktoken (o200k_base encoding)
+  - `count_tokens()` - Accurate token counting
+  - `encode()`/`decode()` - Token conversion
+  - `split_text()` - Sliding window with overlap
+  - `split_by_headers()` - Splits on `## Header` markers (from scraper output)
+  - `chunk_document()` - Main method combining both, returns metadata
+- ✅ `backend/tests/test_chunker.py` - 5 minimal tests (all passing)
+- ✅ Uses tiktoken `o200k_base` encoding (same as GPT-5.1 and text-embedding-3)
+
+**Key Features:**
+```python
+chunker = TextChunker(chunk_size=800, chunk_overlap=200)
+chunks = chunker.chunk_document(text, title="Page Title", url="https://...")
+
+# Returns list of dicts:
+# {
+#     "content": "chunk text",
+#     "chunk_index": 0,
+#     "token_count": 150,
+#     "char_count": 800,
+#     "header": "Section Name"  # or None for intro
+# }
+```
+
+**Research Notes (This Session):**
+- **tiktoken** is OpenAI's tokenizer - `o200k_base` for modern models
+- **Alternatives explored:**
+  - LangChain `RecursiveCharacterTextSplitter` / `MarkdownHeaderTextSplitter`
+  - LlamaIndex splitters
+  - `semantic-text-splitter` (Rust-based)
+  - Google Vertex AI RAG Engine (managed service)
+- **Google vs OpenAI tooling:** OpenAI open-sourced tiktoken; Google has `countTokens` API but no offline tokenizer. Alternatives: Kitoken, ai-tokenizer
+- **Embedding model:** `text-embedding-3-small` is still current (Nov 2025). GPT-5.1 Instant is chat model, not embedding.
+
 **Next Steps:**
-- Phase 4: Chunking & Text Processing
-- Phase 5: Embeddings & Vector Store (integrate scraper with DB)
+- Phase 5: Embeddings & Vector Store (integrate scraper + chunker with DB)
