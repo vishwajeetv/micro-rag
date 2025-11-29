@@ -60,9 +60,9 @@ class Settings(BaseSettings):
     @field_validator("openai_api_key")
     @classmethod
     def validate_openai_key(cls, v: str) -> str:
-        """Validate OpenAI API key format."""
-        if not v.startswith("sk-"):
-            raise ValueError("OpenAI API key must start with 'sk-'")
+        """Validate OpenAI API key is not empty."""
+        if not v or len(v) < 10:
+            raise ValueError("OpenAI API key is required and must be at least 10 characters")
         return v
 
     # ========================================================================

@@ -1,7 +1,7 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
-**Last Updated:** 2025-11-24 (Session 2)
+**Last Updated:** 2025-11-29 (Session 3)
 **Project:** Europa Universalis 5 Wiki RAG System
 **Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
@@ -84,11 +84,11 @@
 5. ✅ Create Docker setup (Dockerfile, docker-compose.yml with PostgreSQL + pgvector)
 6. ✅ Set up structured logging configuration (structlog with JSON/console modes)
 
-### **Phase 2: Backend Core (Day 2)**
-- Build FastAPI app with layered architecture
-- Add middleware (CORS, error handling, logging)
-- Create Pydantic models
-- Set up pytest and pre-commit hooks
+### **Phase 2: Backend Core (Day 2)** ✅ COMPLETED
+- ✅ Build FastAPI app with layered architecture
+- ✅ Add middleware (CORS, error handling, logging)
+- ✅ Create Pydantic models
+- ⏳ Set up pytest and pre-commit hooks (deferred)
 
 ### **Phase 3: Web Scraping (Days 3-4)**
 - Implement EU5 Wiki scraper (BeautifulSoup + aiohttp)
@@ -171,7 +171,7 @@
 
 ---
 
-## 📂 Project Structure (Session 2)
+## 📂 Project Structure (Session 3)
 
 ```
 micro-rag/
@@ -187,24 +187,24 @@ micro-rag/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py             ✅ Created
-│   │   ├── main.py                 ⏳ Next - Phase 2
+│   │   ├── main.py                 ✅ Created (FastAPI + lifespan + middleware)
 │   │   ├── api/
 │   │   │   ├── __init__.py         ✅ Created
-│   │   │   └── routes.py           ⏳ To create
+│   │   │   └── routes.py           ✅ Created (8 endpoints)
 │   │   ├── core/
 │   │   │   ├── __init__.py         ✅ Created
 │   │   │   ├── config.py           ✅ Created (Pydantic Settings)
 │   │   │   └── logging.py          ✅ Created (Structlog)
 │   │   ├── models/
-│   │   │   ├── __init__.py         ✅ Created
-│   │   │   ├── database.py         ⏳ To create (SQLAlchemy models)
-│   │   │   └── schemas.py          ⏳ To create (Pydantic schemas)
+│   │   │   ├── __init__.py         ✅ Updated (exports)
+│   │   │   ├── database.py         ✅ Created (SQLAlchemy + pgvector)
+│   │   │   └── schemas.py          ✅ Created (Pydantic schemas)
 │   │   └── services/
 │   │       ├── __init__.py         ✅ Created
-│   │       ├── scraper.py          ⏳ To create
-│   │       ├── embeddings.py       ⏳ To create
-│   │       ├── vector_store.py     ⏳ To create
-│   │       └── rag_engine.py       ⏳ To create
+│   │       ├── scraper.py          ⏳ Phase 3
+│   │       ├── embeddings.py       ⏳ Phase 5
+│   │       ├── vector_store.py     ⏳ Phase 5
+│   │       └── rag_engine.py       ⏳ Phase 6
 │   ├── tests/
 │   │   └── __init__.py             ✅ Created
 │   ├── scripts/
@@ -216,25 +216,26 @@ micro-rag/
     │   ├── components/             ✅ Created (empty)
     │   ├── pages/                  ✅ Created (empty)
     │   └── utils/                  ✅ Created (empty)
-    ├── package.json                ⏳ To create (Vite + React + TS)
-    └── Dockerfile                  ⏳ To create
+    ├── package.json                ⏳ Phase 8
+    └── Dockerfile                  ⏳ Phase 8
 ```
 
 ---
 
-## 📝 Next Steps (Phase 2 - Backend Core)
+## 📝 Next Steps (Phase 3 - Web Scraping)
 
 **Before you start:**
-- Add your `OPENAI_API_KEY` to `.env` file
+- Make sure your `OPENAI_API_KEY` in `.env` is a real key (not placeholder)
+- Start Docker: `docker-compose up -d postgres` (or start Docker Desktop first)
 
-**Phase 2 Tasks:**
-1. Create `backend/app/main.py` - FastAPI application with lifespan events
-2. Add CORS middleware for frontend integration
-3. Add request logging middleware
-4. Create database connection with SQLAlchemy async engine
-5. Create `backend/app/models/database.py` - SQLAlchemy base and database models
-6. Create health check endpoint (`GET /api/health`)
-7. Test Docker setup: `docker-compose up`
+**Phase 3 Tasks:**
+1. Create `backend/app/services/scraper.py` - EU5 Wiki scraper
+2. Implement async HTTP client with aiohttp
+3. Parse wiki pages with BeautifulSoup
+4. Add rate limiting and retry logic with tenacity
+5. Extract clean text from wiki HTML
+6. Background task management for long-running scrapes
+7. Test scraping a few pages
 
 ---
 
@@ -295,7 +296,7 @@ Just say: **"Let's continue from where we left off"** and I'll:
 
 ## ✅ Session 2 Complete! (2025-11-24)
 
-**What We Built Today:**
+**What We Built:**
 - ✅ PostgreSQL + pgvector setup (replaced Pinecone)
 - ✅ HNSW index configuration (better than IVFFlat)
 - ✅ Complete requirements.txt with all dependencies
@@ -306,6 +307,35 @@ Just say: **"Let's continue from where we left off"** and I'll:
 - ✅ Comprehensive .gitignore
 - ✅ README with quick start guide
 
-**Next Session:** Phase 2 - Backend Core (FastAPI app, database models, health check)
+---
 
-**Session saved! You can restart your laptop safely. See you tomorrow! 🎮**
+## ✅ Session 3 Complete! (2025-11-29)
+
+**What We Built Today:**
+- ✅ `main.py` - FastAPI application with lifespan events
+- ✅ CORS middleware for frontend integration
+- ✅ Request logging middleware with request IDs
+- ✅ Global exception handler
+- ✅ `database.py` - SQLAlchemy async engine + pgvector models
+  - Document model (stores wiki pages)
+  - Chunk model (stores text chunks with embeddings)
+  - ScrapeJob model (tracks scraping progress)
+  - HNSW index configuration
+- ✅ `schemas.py` - Pydantic schemas for all endpoints
+- ✅ `routes.py` - 8 API endpoints:
+  - `GET /api/` - API info
+  - `GET /api/health` - Health check
+  - `GET /api/health/ready` - Readiness probe
+  - `GET /api/health/live` - Liveness probe
+  - `GET /api/index/stats` - Index statistics
+  - `POST /api/scrape` - Start scraping (stub)
+  - `GET /api/scrape/{job_id}` - Get scrape status
+  - `POST /api/chat` - RAG chat (stub)
+- ✅ All imports validated and working
+- ✅ Dependencies installed in venv
+
+**API Docs:** Once running, visit http://localhost:8000/api/docs
+
+**Next Session:** Phase 3 - Web Scraping (scraper service, background tasks)
+
+**Session saved! You can restart your laptop safely.**
