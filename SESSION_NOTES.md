@@ -1,7 +1,7 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
-**Last Updated:** 2025-11-30 (Session 4 - Chunker complete)
+**Last Updated:** 2025-12-01 (Session 4 - Phase 5 complete)
 **Project:** Europa Universalis 5 Wiki RAG System
 **Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
@@ -205,14 +205,16 @@ micro-rag/
 │   │       ├── __init__.py
 │   │       ├── scraper.py          ✅ Async wiki scraper (Phase 3)
 │   │       ├── chunker.py          ✅ Token-based chunker (Phase 4)
-│   │       ├── embeddings.py       ⏳ Phase 5
-│   │       ├── vector_store.py     ⏳ Phase 5
+│   │       ├── embeddings.py       ✅ OpenAI embeddings (Phase 5)
+│   │       ├── vector_store.py     ✅ DB + search (Phase 5)
 │   │       └── rag_engine.py       ⏳ Phase 6
 │   ├── scripts/
 │   │   └── init_pgvector.sql       ✅ Auto-enable pgvector
 │   └── tests/
 │       ├── __init__.py
-│       └── test_chunker.py         ✅ 5 tests (TDD)
+│       ├── test_chunker.py         ✅ 5 tests
+│       ├── test_embeddings.py      ✅ 4 tests
+│       └── test_vector_store.py    ✅ 2 tests
 └── frontend/                        ⏳ Phase 8
     └── src/
 ```
@@ -438,5 +440,26 @@ chunks = chunker.chunk_document(text, title="Page Title", url="https://...")
 - **Google vs OpenAI tooling:** OpenAI open-sourced tiktoken; Google has `countTokens` API but no offline tokenizer. Alternatives: Kitoken, ai-tokenizer
 - **Embedding model:** `text-embedding-3-small` is still current (Nov 2025). GPT-5.1 Instant is chat model, not embedding.
 
+### Phase 5 - Embeddings & Vector Store (COMPLETED)
+- ✅ `backend/app/services/embeddings.py` - OpenAI embeddings service
+  - `EmbeddingService` class with async OpenAI client
+  - `embed_text()` - Single text → 1536-dim vector
+  - `embed_batch()` - Batch texts → vectors (efficient)
+  - Uses `text-embedding-3-small` ($0.02/M tokens)
+- ✅ `backend/app/services/vector_store.py` - Document storage + search
+  - `VectorStore` class (needs AsyncSession from FastAPI DI)
+  - `ingest_document()` - Scrape → chunk → embed → store in DB
+  - `search()` - Query → cosine similarity via pgvector
+  - `get_stats()` - Document/chunk counts
+- ✅ `backend/tests/test_embeddings.py` - 4 tests (mocked OpenAI)
+- ✅ `backend/tests/test_vector_store.py` - 2 tests (mocked DB)
+
+**Total Tests: 11 passing**
+
+**Embedding Model Decision:**
+- Chose `text-embedding-3-small` (1536 dims, $0.02/M tokens)
+- `text-embedding-3-large` is 6.5x more expensive, marginal accuracy gain
+- Can upgrade later if needed
+
 **Next Steps:**
-- Phase 5: Embeddings & Vector Store (integrate scraper + chunker with DB)
+- Phase 6: RAG Query Engine (prompt engineering + GPT-4 integration)
