@@ -143,7 +143,7 @@ async def main():
     print("   (This may take a few minutes...)")
 
     # Configure LLM for RAGAS (uses OPENAI_API_KEY from environment)
-    evaluator_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-4o-mini"))
+    evaluator_llm = LangchainLLMWrapper(ChatOpenAI(model="gpt-5.1"))
 
     metrics = [
         faithfulness,
