@@ -5,9 +5,11 @@ This module handles:
 - Storing documents and chunks in PostgreSQL
 - Generating and storing embeddings
 - Similarity search using pgvector
+- Hybrid search (vector + keyword boost)
 """
 
 import json
+import re
 from typing import Sequence
 
 from sqlalchemy import select, func, text
@@ -21,6 +23,24 @@ from app.services.chunker import TextChunker
 
 logger = get_logger(__name__)
 
+# Keyword boost settings for hybrid search
+KEYWORD_BOOST = 0.35  # Boost score by this amount for keyword matches
+MIN_KEYWORD_LENGTH = 3  # Skip short words like "in", "a", "the"
+STOP_WORDS = {"the", "a", "an", "in", "on", "at", "to", "for", "of", "and", "or", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "must", "can"}
+
+
+def _simple_stem(word: str) -> str:
+    """
+    Simple stemmer - removes common suffixes for better keyword matching.
+    """
+    word = word.lower()
+    # Order matters - check longer suffixes first
+    suffixes = ['ies', 'es', 's', 'ing', 'ed', 'ly', 'tion', 'ness']
+    for suffix in suffixes:
+        if word.endswith(suffix) and len(word) > len(suffix) + 2:
+            return word[:-len(suffix)]
+    return word
+
 
 class VectorStore:
     """
@@ -28,7 +48,7 @@ class VectorStore:
 
     This is the main interface for:
     1. Ingesting scraped pages (document → chunks → embeddings)
-    2. Searching for similar chunks given a query
+    2. Searching for similar chunks given a query (hybrid: vector + keyword)
     """
 
     def __init__(self, db: AsyncSession):
@@ -41,6 +61,64 @@ class VectorStore:
         self.db = db
         self.embeddings = EmbeddingService()
         self.chunker = TextChunker()
+
+    def _extract_keywords(self, query: str) -> list[str]:
+        """
+        Extract meaningful keywords from query for hybrid search.
+
+        Args:
+            query: User query string
+
+        Returns:
+            List of lowercase keywords (no stop words, min length)
+        """
+        # Split on non-word characters
+        words = re.findall(r'\w+', query.lower())
+        # Filter: min length and not stop words
+        keywords = [
+            w for w in words
+            if len(w) >= MIN_KEYWORD_LENGTH and w not in STOP_WORDS
+        ]
+        return keywords
+
+    def _calculate_keyword_boost(self, content: str, keywords: list[str]) -> float:
+        """
+        Calculate keyword boost score for a chunk using stemmed matching.
+
+        Gives extra bonus for chunks where content STARTS with keywords,
+        indicating the chunk is specifically about that topic.
+
+        Args:
+            content: Chunk text content
+            keywords: List of query keywords (already stemmed)
+
+        Returns:
+            Boost score (0 to KEYWORD_BOOST * 1.5)
+        """
+        if not keywords:
+            return 0.0
+
+        # Extract and stem words from content
+        content_words = set(re.findall(r'\w+', content.lower()))
+        content_stems = {_simple_stem(w) for w in content_words}
+
+        # Stem keywords and check for matches
+        matches = sum(1 for kw in keywords if _simple_stem(kw) in content_stems)
+        # Score based on percentage of keywords matched
+        match_ratio = matches / len(keywords)
+        base_boost = KEYWORD_BOOST * match_ratio
+
+        # Extra bonus if content STARTS with keyword (e.g., "List of cultures...")
+        # This indicates the chunk is specifically ABOUT this topic
+        content_start = content[:100].lower()
+        start_bonus = 0.0
+        for kw in keywords:
+            kw_stem = _simple_stem(kw)
+            if kw_stem in content_start[:50]:  # Check first 50 chars
+                start_bonus = KEYWORD_BOOST * 0.5  # Extra 50% bonus
+                break
+
+        return base_boost + start_bonus
 
     async def ingest_document(
         self,
@@ -160,9 +238,12 @@ class VectorStore:
         score_threshold: float = 0.0,
     ) -> list[dict]:
         """
-        Search for chunks similar to the query.
+        Hybrid search: vector similarity + keyword text search.
 
-        Uses cosine similarity via pgvector's <=> operator.
+        Two-phase approach:
+        1. Vector search for semantic matches
+        2. Text search for keyword matches (catches tabular data)
+        Merge and re-rank results.
 
         Args:
             query: Search query text
@@ -173,6 +254,9 @@ class VectorStore:
         Returns:
             List of dicts with chunk info and similarity score
         """
+        # Extract keywords for text search
+        keywords = self._extract_keywords(query)
+
         # Generate query embedding
         query_embedding = await self.embeddings.embed_text(query)
 
@@ -181,6 +265,9 @@ class VectorStore:
         # We convert to similarity: 1 - (distance / 2)
         distance_expr = Chunk.embedding.cosine_distance(query_embedding)
         similarity_expr = (1 - distance_expr).label("similarity")
+
+        # Fetch vector search candidates
+        fetch_limit = max(limit * 5, 50)
 
         stmt = (
             select(
@@ -192,36 +279,101 @@ class VectorStore:
             .join(Document)
             .where(Chunk.embedding.isnot(None))
             .order_by(distance_expr)
-            .limit(limit)
+            .limit(fetch_limit)
         )
 
-        # Filter by collection if specified
         if collection_id is not None:
             stmt = stmt.where(Document.collection_id == collection_id)
 
         result = await self.db.execute(stmt)
-        rows = result.all()
+        vector_rows = result.all()
 
-        # Format results
-        results = []
-        for chunk, doc_title, doc_url, similarity in rows:
-            if similarity >= score_threshold:
+        # Also do a keyword text search using ILIKE
+        # This catches chunks that have low vector scores but contain query terms
+        keyword_rows = []
+        if keywords and len(keywords) >= 2:
+            # Search for chunks containing at least 2 keywords
+            # Use multiple OR combinations of keyword pairs
+            from sqlalchemy import or_, and_
+
+            # Generate all 2-keyword combinations
+            keyword_pairs = []
+            for i in range(len(keywords)):
+                for j in range(i + 1, len(keywords)):
+                    keyword_pairs.append(
+                        and_(
+                            Chunk.content.ilike(f"%{keywords[i]}%"),
+                            Chunk.content.ilike(f"%{keywords[j]}%"),
+                        )
+                    )
+
+            keyword_stmt = (
+                select(
+                    Chunk,
+                    Document.title.label("document_title"),
+                    Document.url.label("document_url"),
+                    similarity_expr,
+                )
+                .join(Document)
+                .where(Chunk.embedding.isnot(None))
+            )
+            if collection_id is not None:
+                keyword_stmt = keyword_stmt.where(Document.collection_id == collection_id)
+
+            # Match chunks containing at least 2 keywords
+            keyword_stmt = keyword_stmt.where(or_(*keyword_pairs)).limit(fetch_limit)
+
+            kw_result = await self.db.execute(keyword_stmt)
+            keyword_rows = kw_result.all()
+
+        # Merge results (dedupe by chunk_id)
+        seen_ids = set()
+        all_rows = []
+        for row in vector_rows:
+            if row[0].id not in seen_ids:
+                seen_ids.add(row[0].id)
+                all_rows.append(row)
+        for row in keyword_rows:
+            if row[0].id not in seen_ids:
+                seen_ids.add(row[0].id)
+                all_rows.append(row)
+
+        # Format results with keyword boost
+        candidates = []
+        for chunk, doc_title, doc_url, similarity in all_rows:
+            # Calculate keyword boost
+            keyword_boost = self._calculate_keyword_boost(chunk.content, keywords)
+            # Also boost if keywords appear in document title
+            title_boost = self._calculate_keyword_boost(doc_title, keywords) * 0.5
+
+            boosted_score = float(similarity) + keyword_boost + title_boost
+
+            if boosted_score >= score_threshold:
                 metadata = json.loads(chunk.metadata_json) if chunk.metadata_json else {}
-                results.append({
+                candidates.append({
                     "chunk_id": chunk.id,
                     "content": chunk.content,
                     "document_id": chunk.document_id,
                     "document_title": doc_title,
                     "document_url": doc_url,
                     "chunk_index": chunk.chunk_index,
-                    "score": float(similarity),
+                    "score": boosted_score,
+                    "vector_score": float(similarity),
+                    "keyword_boost": keyword_boost + title_boost,
                     "header": metadata.get("header"),
                 })
 
+        # Re-sort by boosted score and take top N
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+        results = candidates[:limit]
+
         logger.info(
-            "search_completed",
+            "hybrid_search_completed",
             query=query[:50],
+            keywords=keywords,
             results_found=len(results),
+            vector_candidates=len(vector_rows),
+            keyword_candidates=len(keyword_rows),
             collection_id=collection_id,
         )
 
