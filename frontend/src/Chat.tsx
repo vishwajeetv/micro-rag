@@ -13,6 +13,7 @@ import {
 import SendIcon from '@mui/icons-material/Send';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
+import ReactMarkdown from 'react-markdown';
 import { streamChatMessage, type Source } from './services/api';
 
 interface Message {
@@ -172,10 +173,19 @@ function MessageBubble({ message }: { message: Message }) {
           color: isUser ? 'white' : 'text.primary',
         }}
       >
-        <Typography sx={{ whiteSpace: 'pre-wrap' }}>
-          {message.content}
-          {message.loading && <CircularProgress size={16} sx={{ ml: 1 }} />}
-        </Typography>
+        {isUser ? (
+          <Typography>{message.content}</Typography>
+        ) : (
+          <Box sx={{
+            '& p': { m: 0, mb: 1 },
+            '& ul, & ol': { m: 0, pl: 2 },
+            '& li': { mb: 0.5 },
+            '& strong': { fontWeight: 600 },
+          }}>
+            <ReactMarkdown>{message.content}</ReactMarkdown>
+            {message.loading && <CircularProgress size={16} sx={{ ml: 1 }} />}
+          </Box>
+        )}
 
         {/* Sources */}
         {message.sources && message.sources.length > 0 && (
