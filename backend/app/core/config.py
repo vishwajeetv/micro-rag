@@ -51,7 +51,7 @@ class Settings(BaseSettings):
         ...,  # Required! App will crash if not in .env
         description="OpenAI API key (get from https://platform.openai.com/api-keys)"
     )
-    openai_chat_model: str = "gpt-5-mini"
+    openai_chat_model: str = "gpt-5.1"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_embedding_dimension: int = 1536
     openai_max_tokens: int = 1000
@@ -149,7 +149,7 @@ class Settings(BaseSettings):
     # ========================================================================
 
     rag_top_k: int = Field(5, ge=1, le=20)
-    rag_min_score: float = Field(0.7, ge=0.0, le=1.0)
+    rag_min_score: float = Field(0.5, ge=0.0, le=1.0)  # 0.5 works better for RAG
     rag_include_sources: bool = True
     rag_max_context_tokens: int = Field(3000, ge=500, le=8000)
 

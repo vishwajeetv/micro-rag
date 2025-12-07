@@ -216,7 +216,7 @@ Source: {chunk['document_url']}
             model=self.model,
             messages=messages,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_completion_tokens=self.max_tokens,
         )
 
         answer = response.choices[0].message.content
@@ -321,7 +321,7 @@ Source: {chunk['document_url']}
             model=self.model,
             messages=messages,
             temperature=self.temperature,
-            max_tokens=self.max_tokens,
+            max_completion_tokens=self.max_tokens,
             stream=True,
         )
 
