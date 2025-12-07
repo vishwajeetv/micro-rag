@@ -1,0 +1,22 @@
+[
+  {
+    "question": "What is the Age of Discovery in EU5?",
+    "ground_truth": "The Age of Discovery is the third age in Europa Universalis V. It starts on January 1st, 1437 when the Age of Renaissance ends, and lasts for 100 years until January 1st, 1537 when the Age of Reformation starts."
+  },
+  {
+    "question": "What is manpower and how does it work in EU5?",
+    "ground_truth": "Manpower represents the limit of soldiers a country can support in its standing Army. It is expended when training and maintaining professional Regiments. The rate of Manpower gain can be increased by constructing Manpower Buildings or researching Advances. A country can store up to 5 years of Manpower income."
+  },
+  {
+    "question": "What are the different ages in EU5?",
+    "ground_truth": "The ages in EU5 are: Age of Traditions, Age of Renaissance, Age of Discovery, Age of Reformation, Age of Absolutism, and Age of Revolutions."
+  },
+  {
+    "question": "How does exploration work in EU5?",
+    "ground_truth": "Each country can only see locations it has discovered. Other locations appear as Terra Incognita. Countries can reveal Terra Incognita areas within naval range via exploration, which costs 100 Gold, 250 Sailors for seazones and 250 Manpower for land."
+  },
+  {
+    "question": "What countries are recommended for beginners in EU5?",
+    "ground_truth": "EU5 recommends Ottomans and Castile for learning expansion - how to create a strong army, win wars and integrate conquered land."
+  }
+]
