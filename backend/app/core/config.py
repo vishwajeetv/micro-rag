@@ -51,11 +51,11 @@ class Settings(BaseSettings):
         ...,  # Required! App will crash if not in .env
         description="OpenAI API key (get from https://platform.openai.com/api-keys)"
     )
-    openai_chat_model: str = "gpt-4"
+    openai_chat_model: str = "gpt-5-mini"
     openai_embedding_model: str = "text-embedding-3-small"
     openai_embedding_dimension: int = 1536
     openai_max_tokens: int = 1000
-    openai_temperature: float = Field(0.7, ge=0.0, le=2.0)
+    openai_temperature: float = Field(0.2, ge=0.0, le=2.0)  # Low for factual Q&A
 
     @field_validator("openai_api_key")
     @classmethod

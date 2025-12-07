@@ -9,10 +9,12 @@ Contains business logic for:
 """
 
 from app.services.scraper import WikiScraper, ScrapedPage, ScrapeError, scrape_single_page
+from app.services.rag_engine import RAGEngine
 
 __all__ = [
     "WikiScraper",
     "ScrapedPage",
     "ScrapeError",
     "scrape_single_page",
+    "RAGEngine",
 ]

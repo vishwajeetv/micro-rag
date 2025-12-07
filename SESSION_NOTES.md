@@ -1,7 +1,7 @@
 # Micro-RAG Learning Project - Session Notes
 
 **Date:** 2025-11-24
-**Last Updated:** 2025-12-01 (Session 4 - Phase 5 complete)
+**Last Updated:** 2025-12-07 (Session 6 - Phase 7 complete)
 **Project:** Europa Universalis 5 Wiki RAG System
 **Tech Stack:** Python + FastAPI + PostgreSQL/pgvector + OpenAI + React (Vite) + TypeScript
 
@@ -171,7 +171,7 @@
 
 ---
 
-## 📂 Project Structure (Updated - Session 4)
+## 📂 Project Structure (Updated - Session 5)
 
 ```
 micro-rag/
@@ -207,14 +207,15 @@ micro-rag/
 │   │       ├── chunker.py          ✅ Token-based chunker (Phase 4)
 │   │       ├── embeddings.py       ✅ OpenAI embeddings (Phase 5)
 │   │       ├── vector_store.py     ✅ DB + search (Phase 5)
-│   │       └── rag_engine.py       ⏳ Phase 6
+│   │       └── rag_engine.py       ✅ RAG pipeline (Phase 6)
 │   ├── scripts/
 │   │   └── init_pgvector.sql       ✅ Auto-enable pgvector
 │   └── tests/
 │       ├── __init__.py
 │       ├── test_chunker.py         ✅ 5 tests
 │       ├── test_embeddings.py      ✅ 4 tests
-│       └── test_vector_store.py    ✅ 2 tests
+│       ├── test_vector_store.py    ✅ 2 tests
+│       └── test_rag_engine.py      ✅ 6 tests
 └── frontend/                        ⏳ Phase 8
     └── src/
 ```
@@ -461,5 +462,88 @@ chunks = chunker.chunk_document(text, title="Page Title", url="https://...")
 - `text-embedding-3-large` is 6.5x more expensive, marginal accuracy gain
 - Can upgrade later if needed
 
+### Phase 6 - RAG Query Engine (COMPLETED)
+- ✅ `backend/app/services/rag_engine.py` - RAG pipeline orchestration
+  - `RAGEngine` class with async OpenAI client
+  - Template-based system prompt (supports multi-collection)
+  - `_format_chunk()` - Formats chunks with metadata for context
+  - `_build_messages()` - Constructs system + user messages
+  - `_build_sources()` - Creates source citations (separate from LLM response)
+  - `query()` - Non-streaming RAG query
+  - `query_stream()` - Streaming with sources-first pattern
+- ✅ `backend/tests/test_rag_engine.py` - 6 tests (mocked OpenAI + DB)
+- ✅ Updated config: `gpt-5.1-instant` with temperature `0.2`
+
+**Total Tests: 17 passing**
+
+**Key Design Decisions:**
+- **Template system prompt** - Uses `{collection_name}` and `{collection_description}` placeholders for multi-wiki support
+- **Sources returned separately** - Not embedded in LLM response to avoid hallucinated citations
+- **Streaming: sources first** - Better UX, user sees references while answer streams
+- **Confidence levels** - high (>=0.75), medium (>=0.5), low (no chunks)
+- **Graceful degradation** - Returns helpful message when no relevant chunks found
+
+**RAG Query Flow:**
+```
+1. User question →
+2. Vector search (retrieve top-k chunks) →
+3. Check confidence (handle low scores) →
+4. Build prompt (system template + formatted chunks + question) →
+5. Call GPT-5.1 Instant →
+6. Return answer + sources
+```
+
+---
+
+## ✅ Session 6 Complete! (2025-12-07)
+
+### Phase 7 - API Endpoints (COMPLETED)
+- ✅ Wired `RAGEngine` to `/api/chat` endpoint in `routes.py`:
+  - Resolves `collection_slug` → `collection_id`
+  - Calls `RAGEngine.query()` with question, collection, top_k
+  - Converts result sources to `SourceCitation` Pydantic schema
+  - Returns full `ChatResponse` with answer, sources, model, tokens, latency
+- ✅ Added streaming endpoint `/api/chat/stream`:
+  - Server-Sent Events (SSE) for real-time streaming
+  - Uses `RAGEngine.query_stream()` generator
+  - Event types: `sources`, `content`, `done`, `error`
+  - Headers for disabling buffering (nginx/proxy compatible)
+
+**API Endpoints (13 routes total):**
+```
+GET  /api/                           - API info
+GET  /api/health                     - Health check (DB status)
+GET  /api/health/ready              - Readiness probe
+GET  /api/health/live               - Liveness probe
+GET  /api/index/stats               - Index statistics
+
+POST /api/collections               - Create collection
+GET  /api/collections               - List collections
+GET  /api/collections/{slug}        - Get collection details
+DEL  /api/collections/{slug}        - Delete collection
+POST /api/collections/{slug}/scrape - Start scrape job
+
+GET  /api/scrape/{job_id}           - Get scrape status
+
+POST /api/chat                      - RAG query (non-streaming)
+POST /api/chat/stream               - RAG query (SSE streaming)
+```
+
+**Total Tests: 17 passing**
+
+**Streaming Response Format (SSE):**
+```javascript
+// Event 1: Sources sent first
+data: {"type": "sources", "data": [...]}
+
+// Event 2-N: Content tokens
+data: {"type": "content", "data": "The "}
+data: {"type": "content", "data": "answer "}
+data: {"type": "content", "data": "is..."}
+
+// Final event: Metadata
+data: {"type": "done", "data": {"model": "gpt-5.1-instant", "latency_ms": 1234, "confidence": "high"}}
+```
+
 **Next Steps:**
-- Phase 6: RAG Query Engine (prompt engineering + GPT-4 integration)
+- Phase 8: React Frontend (Chat UI with streaming support)

@@ -11,10 +11,13 @@ This module defines all API endpoints:
 Routes are organized by feature and will be expanded in later phases.
 """
 
+import json
 import re
 from datetime import datetime
+from typing import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import text, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -33,7 +36,9 @@ from app.models.schemas import (
     ScrapeStatusResponse,
     ChatRequest,
     ChatResponse,
+    SourceCitation,
 )
+from app.services.rag_engine import RAGEngine
 
 logger = get_logger(__name__)
 
@@ -485,19 +490,20 @@ async def chat(
     2. Searches for relevant chunks (optionally filtered by collection)
     3. Generates an answer using GPT-4
     4. Returns answer with source citations
-
-    To be implemented in Phase 6.
     """
-    # If collection specified, verify it exists
+    # Resolve collection_slug to collection_id
+    collection_id: int | None = None
     if request.collection_slug:
         result = await db.execute(
             select(Collection).where(Collection.slug == request.collection_slug)
         )
-        if not result.scalar_one_or_none():
+        collection = result.scalar_one_or_none()
+        if not collection:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Collection '{request.collection_slug}' not found",
             )
+        collection_id = collection.id
 
     # Check if we have any chunks
     chunk_count = await db.execute(select(func.count()).select_from(Chunk))
@@ -513,14 +519,113 @@ async def chat(
         collection=request.collection_slug,
     )
 
-    # TODO: Phase 6 - Implement RAG pipeline
+    # Execute RAG query
+    rag_engine = RAGEngine(db)
+    result = await rag_engine.query(
+        question=request.question,
+        collection_id=collection_id,
+        top_k=request.top_k,
+    )
+
+    # Convert sources to SourceCitation schema
+    sources = []
+    if request.include_sources:
+        sources = [
+            SourceCitation(
+                document_id=s["document_id"],
+                document_title=s["document_title"],
+                document_url=s["document_url"],
+                chunk_content=s["chunk_content"],
+                relevance_score=s["relevance_score"],
+            )
+            for s in result["sources"]
+        ]
 
     return ChatResponse(
-        answer="RAG pipeline not yet implemented. Coming in Phase 6!",
-        sources=[],
-        model=settings.openai_chat_model,
-        tokens_used=0,
-        latency_ms=0,
+        answer=result["answer"],
+        sources=sources,
+        model=result["model"],
+        tokens_used=result["tokens_used"],
+        latency_ms=result["latency_ms"],
+    )
+
+
+@router.post(
+    "/chat/stream",
+    tags=["Chat"],
+    summary="Ask a question (streaming)",
+    description="Ask a question and get a streaming response with Server-Sent Events",
+)
+async def chat_stream(
+    request: ChatRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Streaming RAG chat endpoint using Server-Sent Events (SSE).
+
+    Event types:
+    - sources: Source citations (sent first)
+    - content: Answer tokens as they're generated
+    - done: Final metadata (model, latency, confidence)
+    - error: Error message if something goes wrong
+
+    Usage with EventSource:
+        const es = new EventSource('/api/chat/stream', { method: 'POST', body: ... });
+        es.onmessage = (e) => console.log(JSON.parse(e.data));
+    """
+    # Resolve collection_slug to collection_id
+    collection_id: int | None = None
+    if request.collection_slug:
+        result = await db.execute(
+            select(Collection).where(Collection.slug == request.collection_slug)
+        )
+        collection = result.scalar_one_or_none()
+        if not collection:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection '{request.collection_slug}' not found",
+            )
+        collection_id = collection.id
+
+    # Check if we have any chunks
+    chunk_count = await db.execute(select(func.count()).select_from(Chunk))
+    if (chunk_count.scalar() or 0) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No documents indexed yet. Please create a collection and run a scrape job first.",
+        )
+
+    logger.info(
+        "chat_stream_request",
+        question=request.question[:100],
+        collection=request.collection_slug,
+    )
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        """Generate SSE events from RAG stream."""
+        try:
+            rag_engine = RAGEngine(db)
+            async for chunk in rag_engine.query_stream(
+                question=request.question,
+                collection_id=collection_id,
+                top_k=request.top_k,
+            ):
+                # Format as SSE: "data: {json}\n\n"
+                event_data = json.dumps(chunk)
+                yield f"data: {event_data}\n\n"
+        except Exception as e:
+            logger.error("chat_stream_error", error=str(e))
+            error_event = json.dumps({"type": "error", "data": str(e)})
+            yield f"data: {error_event}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",  # Disable nginx buffering
+        },
     )
 
 
