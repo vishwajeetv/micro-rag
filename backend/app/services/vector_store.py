@@ -112,11 +112,14 @@ class VectorStore:
         # This indicates the chunk is specifically ABOUT this topic
         content_start = content[:100].lower()
         start_bonus = 0.0
-        for kw in keywords:
-            kw_stem = _simple_stem(kw)
-            if kw_stem in content_start[:50]:  # Check first 50 chars
-                start_bonus = KEYWORD_BOOST * 0.5  # Extra 50% bonus
-                break
+
+        # Count how many keywords appear in the start
+        start_matches = sum(1 for kw in keywords if _simple_stem(kw) in content_start[:50])
+        if start_matches >= 2:
+            # Multiple keywords at start = very relevant
+            start_bonus = KEYWORD_BOOST * 1.0  # Full extra boost
+        elif start_matches == 1:
+            start_bonus = KEYWORD_BOOST * 0.5  # Half extra boost
 
         return base_boost + start_bonus
 
