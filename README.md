@@ -4,7 +4,7 @@ RAG system built for learning. With a sample implementation for Europa Universal
 
 ## Tech Stack
 
-- **Backend**: FastAPI, PostgreSQL + pgvector, OpenAI (GPT-4, embeddings)
+- **Backend**: FastAPI, PostgreSQL + pgvector, OpenAI (GPT-5.1, embeddings)
 - **Frontend**: React + Vite + TypeScript + MUI
 - **Evaluation**: RAGAS
 
