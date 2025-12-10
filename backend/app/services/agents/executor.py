@@ -112,6 +112,7 @@ class AgentExecutor:
         self.memory.add_message("user", user_input)
 
         iteration = 0
+        total_tokens = 0  # Track cumulative token usage
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -122,12 +123,19 @@ class AgentExecutor:
                 max=self.max_iterations
             )
 
-            # Emit thinking event
-            yield AgentEvent(EVENT_THINKING, {"iteration": iteration})
+            # Emit thinking event with token count so far
+            yield AgentEvent(EVENT_THINKING, {
+                "iteration": iteration,
+                "tokens_so_far": total_tokens
+            })
 
             try:
                 # Call LLM with conversation history and tools
                 response = await self._call_llm()
+
+                # Track token usage from this call
+                if response.usage:
+                    total_tokens += response.usage.total_tokens
 
                 # Get the assistant's message
                 message = response.choices[0].message
@@ -190,15 +198,18 @@ class AgentExecutor:
                     # Add to memory
                     self.memory.add_message("assistant", final_answer)
 
-                    # Emit answer event
+                    # Emit answer event with total tokens
                     yield AgentEvent(EVENT_ANSWER, {
-                        "content": final_answer
+                        "content": final_answer,
+                        "tokens_used": total_tokens,
+                        "iterations": iteration
                     })
 
                     logger.info(
                         "agent_run_complete",
                         agent=self.agent.name,
-                        iterations=iteration
+                        iterations=iteration,
+                        tokens_used=total_tokens
                     )
 
                     # Done!

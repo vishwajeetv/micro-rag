@@ -31,14 +31,16 @@ class RAGSearchTool(BaseTool):
         "Always use this before answering factual questions."
     )
 
-    def __init__(self, vector_store: VectorStore):
+    def __init__(self, vector_store: VectorStore, collection_id: int | None = None):
         """
         Initialize with a VectorStore instance.
 
         Args:
             vector_store: Your existing VectorStore for searching
+            collection_id: Optional collection to search within
         """
         self.vector_store = vector_store
+        self.collection_id = collection_id
 
     def get_parameters_schema(self) -> dict:
         """
@@ -82,6 +84,7 @@ class RAGSearchTool(BaseTool):
             # Use your existing vector store search
             results = await self.vector_store.search(
                 query=query,
+                collection_id=self.collection_id,
                 limit=limit,
                 score_threshold=0.3  # Lower threshold to get more results
             )

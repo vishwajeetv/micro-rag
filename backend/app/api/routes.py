@@ -735,10 +735,10 @@ async def agent_run(
         """Generate SSE events from agent execution."""
         try:
             # Create vector store for RAG tool
-            vector_store = VectorStore(db, collection_id=collection_id)
+            vector_store = VectorStore(db)
 
-            # Create RAG search tool
-            rag_tool = RAGSearchTool(vector_store)
+            # Create RAG search tool with collection filter
+            rag_tool = RAGSearchTool(vector_store, collection_id=collection_id)
 
             # Create the agent
             agent = Agent(
