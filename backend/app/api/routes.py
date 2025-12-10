@@ -37,7 +37,11 @@ from app.models.schemas import (
     ChatRequest,
     ChatResponse,
     SourceCitation,
+    AgentRequest,
 )
+from app.services.agents import Agent, AgentExecutor, SessionMemory
+from app.services.tools.rag_tool import RAGSearchTool
+from app.services.vector_store import VectorStore
 from app.services.rag_engine import RAGEngine
 
 logger = get_logger(__name__)
@@ -644,3 +648,132 @@ async def api_info() -> dict:
         "docs_url": f"{settings.api_v1_prefix}/docs",
         "health_url": f"{settings.api_v1_prefix}/health",
     }
+
+
+# ============================================================================
+# AGENT ENDPOINTS
+# ============================================================================
+
+# In-memory session storage (for MVP - later can use Redis/DB)
+_agent_sessions: dict[str, SessionMemory] = {}
+
+
+def _get_or_create_session(session_id: str | None) -> tuple[str, SessionMemory]:
+    """Get existing session or create a new one."""
+    import uuid
+
+    if session_id and session_id in _agent_sessions:
+        return session_id, _agent_sessions[session_id]
+
+    # Create new session
+    new_id = session_id or str(uuid.uuid4())
+    memory = SessionMemory()
+    _agent_sessions[new_id] = memory
+
+    # Cleanup old sessions (keep max 100)
+    if len(_agent_sessions) > 100:
+        oldest_keys = list(_agent_sessions.keys())[:-100]
+        for key in oldest_keys:
+            del _agent_sessions[key]
+
+    return new_id, memory
+
+
+@router.post(
+    "/agent/run",
+    tags=["Agent"],
+    summary="Run agent query (streaming)",
+    description="Run an agentic query with tool use, streaming events via SSE",
+)
+async def agent_run(
+    request: AgentRequest,
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """
+    Run an agentic query with the ReAct pattern.
+
+    This endpoint:
+    1. Creates an agent with RAG search tool
+    2. Runs the agent loop (Think → Act → Observe → Repeat)
+    3. Streams events as they happen via SSE
+
+    Event types:
+    - thinking: Agent is processing
+    - tool_call: Agent is calling a tool
+    - tool_result: Tool returned a result
+    - answer: Final answer from the agent
+    - error: Something went wrong
+
+    Example SSE event:
+        data: {"type": "tool_call", "data": {"tool": "rag_search", "arguments": "..."}}
+    """
+    # Get or create session for conversation continuity
+    session_id, memory = _get_or_create_session(request.session_id)
+
+    # Resolve collection if specified
+    collection_id: int | None = None
+    if request.collection_slug:
+        result = await db.execute(
+            select(Collection).where(Collection.slug == request.collection_slug)
+        )
+        collection = result.scalar_one_or_none()
+        if not collection:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Collection '{request.collection_slug}' not found",
+            )
+        collection_id = collection.id
+
+    logger.info(
+        "agent_run_request",
+        message=request.message[:100],
+        session_id=session_id,
+        collection=request.collection_slug,
+    )
+
+    async def event_generator() -> AsyncGenerator[str, None]:
+        """Generate SSE events from agent execution."""
+        try:
+            # Create vector store for RAG tool
+            vector_store = VectorStore(db, collection_id=collection_id)
+
+            # Create RAG search tool
+            rag_tool = RAGSearchTool(vector_store)
+
+            # Create the agent
+            agent = Agent(
+                name="RAGAssistant",
+                system_prompt=(
+                    "You are a helpful assistant with access to a knowledge base. "
+                    "When users ask questions, use the rag_search tool to find relevant "
+                    "information before answering. Always cite your sources. "
+                    "If you can't find relevant information, say so honestly."
+                ),
+                tools=[rag_tool],
+                model="gpt-5.1",
+            )
+
+            # Create executor with session memory
+            executor = AgentExecutor(agent, memory=memory)
+
+            # Run the agent and stream events
+            async for event in executor.run(request.message):
+                yield event.to_sse()
+
+            # Send session_id in a final metadata event
+            yield f"data: {json.dumps({'type': 'metadata', 'data': {'session_id': session_id}})}\n\n"
+
+        except Exception as e:
+            logger.error("agent_run_error", error=str(e))
+            error_event = json.dumps({"type": "error", "data": {"message": str(e)}})
+            yield f"data: {error_event}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

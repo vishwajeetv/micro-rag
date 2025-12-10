@@ -329,3 +329,57 @@ class ValidationErrorResponse(BaseModel):
 
     error: str = "Validation Error"
     detail: list[dict[str, Any]] = Field(description="List of validation errors")
+
+
+# ============================================================================
+# AGENT SCHEMAS
+# ============================================================================
+
+
+class AgentRequest(BaseModel):
+    """Request to run an agent query."""
+
+    message: str = Field(
+        min_length=1,
+        max_length=5000,
+        description="User message/question for the agent",
+        examples=["What are the key features of Europa Universalis 5?"],
+    )
+    session_id: str | None = Field(
+        default=None,
+        description="Session ID for conversation continuity (auto-generated if not provided)",
+    )
+    collection_slug: str | None = Field(
+        default=None,
+        description="Collection to search in (default: search all collections)",
+    )
+
+
+class AgentEventData(BaseModel):
+    """Data payload for agent events."""
+
+    # For thinking events
+    iteration: int | None = Field(default=None, description="Current iteration number")
+
+    # For tool_call events
+    tool: str | None = Field(default=None, description="Tool name being called")
+    arguments: str | None = Field(default=None, description="Tool arguments as JSON")
+
+    # For tool_result events
+    success: bool | None = Field(default=None, description="Whether tool succeeded")
+    output: str | None = Field(default=None, description="Tool output (truncated)")
+
+    # For answer events
+    content: str | None = Field(default=None, description="Final answer content")
+
+    # For error events
+    message: str | None = Field(default=None, description="Error message")
+
+
+class AgentEventResponse(BaseModel):
+    """A single event from the agent stream."""
+
+    type: str = Field(
+        description="Event type: thinking, tool_call, tool_result, answer, error"
+    )
+    data: AgentEventData = Field(description="Event-specific data")
